@@ -24,7 +24,13 @@ export interface NetworkConfig {
 }
 
 export const NETWORKS: Record<string, NetworkConfig> = {
-  // --- 실제 메인넷 (Mainnet) ---
+  sepolia: {
+    id: "sepolia",
+    name: "Ethereum Sepolia (Testnet)",
+    symbol: "ETH",
+    rpcUrl: "https://ethereum-sepolia-rpc.publicnode.com",
+    explorerUrl: "https://sepolia.etherscan.io",
+  },
   ethereum: {
     id: "ethereum",
     name: "Ethereum Mainnet",
@@ -46,22 +52,13 @@ export const NETWORKS: Record<string, NetworkConfig> = {
     rpcUrl: "https://arb1.arbitrum.io/rpc",
     explorerUrl: "https://arbiscan.io",
   },
-  // --- 테스트넷 (Testnet) ---
-  sepolia: {
-    id: "sepolia",
-    name: "Ethereum Sepolia",
-    symbol: "ETH",
-    rpcUrl: "https://ethereum-sepolia-rpc.publicnode.com",
-    explorerUrl: "https://sepolia.etherscan.io",
-  },
 };
 
-// 비밀번호 기반 지갑 데이터 암호화 함수
+// 🔐 [보안 1] 클라이언트 단 AES 암호화
 export const encryptVault = (vault: WalletVault, password: string): string => {
   return CryptoJS.AES.encrypt(JSON.stringify(vault), password).toString();
 };
 
-// 비밀번호 기반 지갑 데이터 복호화 함수
 export const decryptVault = (encryptedData: string, password: string): WalletVault | null => {
   try {
     const bytes = CryptoJS.AES.decrypt(encryptedData, password);
@@ -70,6 +67,27 @@ export const decryptVault = (encryptedData: string, password: string): WalletVau
     return JSON.parse(decryptedText);
   } catch (e) {
     return null;
+  }
+};
+
+// 🔐 [보안 2] 클립보드 30초 후 자동 삭제 함수
+export const copyToClipboardWithAutoClear = async (text: string, clearAfterMs: number = 30000): Promise<boolean> => {
+  try {
+    await navigator.clipboard.writeText(text);
+    setTimeout(async () => {
+      try {
+        const currentText = await navigator.clipboard.readText();
+        if (currentText === text) {
+          await navigator.clipboard.writeText("");
+        }
+      } catch (e) {
+        // 권한 제한 시 무시
+      }
+    }, clearAfterMs);
+    return true;
+  } catch (err) {
+    console.error("Clipboard copy failed:", err);
+    return false;
   }
 };
 
@@ -84,6 +102,9 @@ export const createNewWallet = (): WalletVault => {
 
 export const restoreWalletFromMnemonic = (mnemonic: string): WalletVault => {
   const cleaned = mnemonic.trim();
+  if (!ethers.Mnemonic.isValidMnemonic(cleaned)) {
+    throw new Error("유효하지 않은 시드 구문(Seed Phrase)입니다.");
+  }
   const restored = ethers.Wallet.fromPhrase(cleaned);
   return {
     address: restored.address,
@@ -92,10 +113,7 @@ export const restoreWalletFromMnemonic = (mnemonic: string): WalletVault => {
   };
 };
 
-export const fetchBalance = async (
-  address: string,
-  rpcUrl: string
-): Promise<string> => {
+export const fetchBalance = async (address: string, rpcUrl: string): Promise<string> => {
   try {
     const provider = new ethers.JsonRpcProvider(rpcUrl);
     const balance = await provider.getBalance(address);
@@ -106,21 +124,48 @@ export const fetchBalance = async (
   }
 };
 
+// 🧪 [검증 2] 송금 전 검증 및 예외 처리 강화
 export const sendTransaction = async (
   privateKey: string,
   toAddress: string,
   amountEth: string,
   rpcUrl: string
-): Promise<string> => {
-  const provider = new ethers.JsonRpcProvider(rpcUrl);
-  const signer = new ethers.Wallet(privateKey, provider);
+): Promise<{ hash?: string; error?: string }> => {
+  try {
+    // 1. 주소 유효성 검사
+    if (!ethers.isAddress(toAddress)) {
+      return { error: "올바른 이더리움 지갑 주소 형식이 아닙니다." };
+    }
 
-  const tx = await signer.sendTransaction({
-    to: toAddress,
-    value: ethers.parseEther(amountEth),
-  });
+    const provider = new ethers.JsonRpcProvider(rpcUrl);
+    const signer = new ethers.Wallet(privateKey, provider);
 
-  return tx.hash;
+    // 2. 입력 수량 검사
+    const parsedAmount = ethers.parseEther(amountEth);
+    if (parsedAmount <= 0n) {
+      return { error: "송금 금액은 0보다 크여야 합니다." };
+    }
+
+    // 3. 잔액 및 가스비 검사
+    const balance = await provider.getBalance(signer.address);
+    const feeData = await provider.getFeeData();
+    const gasLimit = 21000n; // 기본 이더리움 전송 가스
+    const estimatedGasFee = (feeData.gasPrice || 0n) * gasLimit;
+
+    if (balance < parsedAmount + estimatedGasFee) {
+      return { error: "잔액 또는 가스비(수수료)가 부족합니다." };
+    }
+
+    const tx = await signer.sendTransaction({
+      to: toAddress,
+      value: parsedAmount,
+    });
+
+    return { hash: tx.hash };
+  } catch (err: any) {
+    console.error("Transaction failed:", err);
+    return { error: err.message || "트랜잭션 전송 중 오류가 발생했습니다." };
+  }
 };
 
 export const fetchTransactionHistory = async (
@@ -132,7 +177,7 @@ export const fetchTransactionHistory = async (
     const currentBlock = await provider.getBlockNumber();
     const history: TransactionItem[] = [];
 
-    const startBlock = Math.max(0, currentBlock - 30);
+    const startBlock = Math.max(0, currentBlock - 20);
 
     for (let i = currentBlock; i >= startBlock && history.length < 5; i--) {
       const block = await provider.getBlock(i, true);
