@@ -37,8 +37,11 @@ export default function Home() {
   const [showSendModal, setShowSendModal] = useState<boolean>(false);
   const [showConfirmModal, setShowConfirmModal] = useState<boolean>(false);
 
-  // 📥 ② [MVP 2단계] Receive 모달 state
+  // 📥 Receive 모달 state
   const [showReceiveModal, setShowReceiveModal] = useState<boolean>(false);
+
+  // 📜 ③ [MVP 2단계] Transaction Detail 모달 state
+  const [selectedTx, setSelectedTx] = useState<TransactionItem | null>(null);
 
   // 복사 안내 메시지
   const [copyNotice, setCopyNotice] = useState<string>("");
@@ -151,6 +154,7 @@ export default function Home() {
     setShowReceiveModal(false);
     setShowSendModal(false);
     setShowConfirmModal(false);
+    setSelectedTx(null);
     if (lockTimerRef.current) clearTimeout(lockTimerRef.current);
   };
 
@@ -236,7 +240,7 @@ export default function Home() {
         </div>
       </header>
 
-      {/* 안내 메시지 */}
+      {/* 상태 메시지 */}
       {statusMsg && (
         <div className="w-full max-w-2xl mb-4 p-3 rounded-lg bg-teal-950/50 border border-teal-500/30 text-teal-200 text-xs text-center">
           {statusMsg}
@@ -249,7 +253,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* 1. 지갑 미보유 상태 */}
+      {/* 1. 지갑 미보유 */}
       {!vault && !encryptedStorage && (
         <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
           <h2 className="text-lg font-bold text-center text-slate-200">Earth Wallet 시작하기</h2>
@@ -292,7 +296,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* 2. 지갑 잠김 상태 */}
+      {/* 2. 지갑 잠김 */}
       {!vault && encryptedStorage && (
         <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4 text-center">
           <span className="text-4xl">🔐</span>
@@ -319,7 +323,7 @@ export default function Home() {
       {/* 3. 대시보드 */}
       {vault && (
         <div className="w-full max-w-2xl space-y-6">
-          {/* 지갑 카드 및 자산 */}
+          {/* 지갑 카드 */}
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl relative">
             <div className="flex justify-between items-start mb-4">
               <div>
@@ -353,7 +357,7 @@ export default function Home() {
               </div>
             </div>
 
-            {/* 📥 [Send] / [Receive] 주요 버튼 */}
+            {/* [Send] / [Receive] 버튼 */}
             <div className="grid grid-cols-2 gap-3 mb-4">
               <button
                 onClick={() => setShowSendModal(true)}
@@ -386,9 +390,9 @@ export default function Home() {
             </div>
           </div>
 
-          {/* 📜 최근 거래 내역 */}
+          {/* 📜 최근 거래 내역 목록 */}
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
-            <h3 className="text-sm font-bold text-slate-200 mb-3">최근 거래 내역</h3>
+            <h3 className="text-sm font-bold text-slate-200 mb-3">최근 거래 내역 (클릭 시 상세)</h3>
             {txHistory.length === 0 ? (
               <p className="text-xs text-slate-500 text-center py-4">최근 거래 내역이 없습니다.</p>
             ) : (
@@ -396,22 +400,21 @@ export default function Home() {
                 {txHistory.map((tx) => (
                   <div
                     key={tx.hash}
-                    className="flex justify-between items-center bg-slate-950 p-3 rounded-lg text-xs font-mono border border-slate-800"
+                    onClick={() => setSelectedTx(tx)}
+                    className="flex justify-between items-center bg-slate-950 hover:bg-slate-800/80 p-3 rounded-lg text-xs font-mono border border-slate-800 cursor-pointer transition"
                   >
                     <div>
-                      <a
-                        href={`${currentNetwork.explorerUrl}/tx/${tx.hash}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-teal-400 hover:underline"
-                      >
-                        {tx.hash.slice(0, 10)}...
-                      </a>
+                      <div className="text-teal-400 font-semibold">
+                        Tx: {tx.hash.slice(0, 10)}...{tx.hash.slice(-6)}
+                      </div>
                       <div className="text-slate-500 text-[10px] mt-0.5">
-                        To: {tx.to.slice(0, 6)}...
+                        To: {tx.to.slice(0, 6)}...{tx.to.slice(-4)} | Block #{tx.blockNumber}
                       </div>
                     </div>
-                    <span className="text-emerald-400 font-semibold">{tx.value} ETH</span>
+                    <div className="text-right">
+                      <span className="text-emerald-400 font-semibold block">{tx.value} ETH</span>
+                      <span className="text-[10px] text-teal-300/80">Confirmed</span>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -420,7 +423,95 @@ export default function Home() {
         </div>
       )}
 
-      {/* 📥 2. Receive 모달 (QR Code) */}
+      {/* 📜 ③ Transaction Detail 모달 */}
+      {selectedTx && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex justify-center items-center p-4 z-50">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 w-full max-w-md shadow-2xl space-y-4">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+              <h3 className="text-base font-bold text-slate-100 flex items-center gap-2">
+                <span>🔍</span> Transaction Detail
+              </h3>
+              <button
+                onClick={() => setSelectedTx(null)}
+                className="text-slate-400 hover:text-slate-200 text-sm"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs font-mono">
+              <div>
+                <span className="text-slate-500 block text-[10px]">Status</span>
+                <span className="inline-block px-2 py-0.5 mt-0.5 rounded text-[10px] bg-emerald-950 text-emerald-300 border border-emerald-500/30">
+                  Confirmed (Success)
+                </span>
+              </div>
+
+              <div>
+                <span className="text-slate-500 block text-[10px]">Network</span>
+                <span className="text-slate-300">{currentNetwork.name}</span>
+              </div>
+
+              <div>
+                <span className="text-slate-500 block text-[10px]">Transaction Hash</span>
+                <div className="flex justify-between items-center bg-slate-950 p-2 rounded border border-slate-800 mt-0.5">
+                  <span className="text-teal-400 break-all text-[11px]">{selectedTx.hash}</span>
+                  <button
+                    onClick={() => handleCopy(selectedTx.hash, "Tx Hash")}
+                    className="ml-2 text-[10px] bg-slate-800 hover:bg-slate-700 px-2 py-1 rounded text-slate-300 shrink-0"
+                  >
+                    복사
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <span className="text-slate-500 block text-[10px]">From</span>
+                  <p className="text-slate-300 bg-slate-950 p-2 rounded border border-slate-800 break-all text-[10px] mt-0.5">
+                    {selectedTx.from}
+                  </p>
+                </div>
+                <div>
+                  <span className="text-slate-500 block text-[10px]">To</span>
+                  <p className="text-slate-300 bg-slate-950 p-2 rounded border border-slate-800 break-all text-[10px] mt-0.5">
+                    {selectedTx.to}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex justify-between py-2 bg-slate-950 px-3 rounded border border-slate-800">
+                <span className="text-slate-400">Amount Sent:</span>
+                <span className="text-emerald-400 font-bold">{selectedTx.value} ETH</span>
+              </div>
+
+              <div>
+                <span className="text-slate-500 block text-[10px]">Block Number</span>
+                <span className="text-slate-300">#{selectedTx.blockNumber}</span>
+              </div>
+            </div>
+
+            <div className="pt-2 flex gap-2">
+              <a
+                href={`${currentNetwork.explorerUrl}/tx/${selectedTx.hash}`}
+                target="_blank"
+                rel="noreferrer"
+                className="flex-1 bg-teal-500 hover:bg-teal-600 text-slate-950 text-center font-bold py-2.5 rounded-lg text-xs transition block"
+              >
+                View on Etherscan ↗
+              </a>
+              <button
+                onClick={() => setSelectedTx(null)}
+                className="bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-2.5 rounded-lg text-xs transition"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 📥 Receive 모달 */}
       {showReceiveModal && vault && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex justify-center items-center p-4 z-50">
           <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 w-full max-w-sm shadow-2xl space-y-4 text-center">
@@ -436,17 +527,14 @@ export default function Home() {
               </button>
             </div>
 
-            {/* 네트워크 명시 */}
             <div className="text-xs bg-slate-950 py-1.5 px-3 rounded-full inline-block text-purple-300 border border-purple-500/30">
               네트워크: {currentNetwork.name}
             </div>
 
-            {/* 📱 QR Code (지갑 주소만 포함, 시드/개인키 절대 제외) */}
             <div className="bg-white p-4 rounded-xl inline-block shadow-inner">
               <QRCodeSVG value={vault.address} size={180} level="H" />
             </div>
 
-            {/* 주소 전체 및 축약 표시 */}
             <div>
               <span className="text-[11px] text-slate-400 block mb-1">지갑 주소</span>
               <p className="text-xs font-mono font-semibold text-slate-200 bg-slate-950 p-2.5 rounded-lg border border-slate-800 break-all">
