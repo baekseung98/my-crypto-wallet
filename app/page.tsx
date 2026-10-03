@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { QRCodeSVG } from "qrcode.react";
 import {
   WalletVault,
   NETWORKS,
@@ -33,24 +34,27 @@ export default function Home() {
   const [toAddress, setToAddress] = useState<string>("");
   const [sendAmount, setSendAmount] = useState<string>("");
   const [estimatedGas, setEstimatedGas] = useState<string>("0.0001");
+  const [showSendModal, setShowSendModal] = useState<boolean>(false);
   const [showConfirmModal, setShowConfirmModal] = useState<boolean>(false);
 
-  // 복사 및 안내 메시지
+  // 📥 ② [MVP 2단계] Receive 모달 state
+  const [showReceiveModal, setShowReceiveModal] = useState<boolean>(false);
+
+  // 복사 안내 메시지
   const [copyNotice, setCopyNotice] = useState<string>("");
 
-  // 🔒 ① [MVP 2단계] 자동 잠금 (Auto-Lock) 타이머 설정 (3분)
+  // 🔒 자동 잠금 (3분)
   const AUTO_LOCK_MS = 3 * 60 * 1000;
   const lockTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const currentNetwork = NETWORKS[selectedNetworkKey];
 
-  // 미활동 감지 및 잠금 함수
   const resetLockTimer = () => {
     if (lockTimerRef.current) clearTimeout(lockTimerRef.current);
     if (vault) {
       lockTimerRef.current = setTimeout(() => {
         handleLock();
-        setStatusMsg("🔒 3분간 활동이 없어 지갑이 자동으로 잠겼습니다.");
+        setStatusMsg("🔒 3분간 미활동으로 vault state 제거 및 잠금 처리되었습니다.");
       }, AUTO_LOCK_MS);
     }
   };
@@ -144,6 +148,9 @@ export default function Home() {
   const handleLock = () => {
     setVault(null);
     setInputPassword("");
+    setShowReceiveModal(false);
+    setShowSendModal(false);
+    setShowConfirmModal(false);
     if (lockTimerRef.current) clearTimeout(lockTimerRef.current);
   };
 
@@ -159,6 +166,7 @@ export default function Home() {
   const handleExecuteSend = async () => {
     if (!vault) return;
     setShowConfirmModal(false);
+    setShowSendModal(false);
     setIsLoading(true);
     setStatusMsg("트랜잭션 전송 중...");
 
@@ -194,7 +202,7 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100 p-4 md:p-8 flex flex-col items-center">
-      {/* 🌍 Earth Wallet 헤더 & 브랜드 UI */}
+      {/* 🌍 Earth Wallet 헤더 */}
       <header className="w-full max-w-2xl flex justify-between items-center mb-6 pb-4 border-b border-slate-800">
         <div className="flex items-center gap-2">
           <span className="text-2xl">🌍</span>
@@ -228,7 +236,7 @@ export default function Home() {
         </div>
       </header>
 
-      {/* 상태 메시지 / 안내 */}
+      {/* 안내 메시지 */}
       {statusMsg && (
         <div className="w-full max-w-2xl mb-4 p-3 rounded-lg bg-teal-950/50 border border-teal-500/30 text-teal-200 text-xs text-center">
           {statusMsg}
@@ -259,14 +267,12 @@ export default function Home() {
             />
           </div>
 
-          <div className="flex gap-2">
-            <button
-              onClick={handleCreateWallet}
-              className="flex-1 bg-gradient-to-r from-teal-500 to-emerald-600 hover:from-teal-600 hover:to-emerald-700 text-slate-950 font-bold py-2.5 rounded-lg text-sm transition"
-            >
-              신규 지갑 생성
-            </button>
-          </div>
+          <button
+            onClick={handleCreateWallet}
+            className="w-full bg-gradient-to-r from-teal-500 to-emerald-600 hover:from-teal-600 hover:to-emerald-700 text-slate-950 font-bold py-2.5 rounded-lg text-sm transition"
+          >
+            신규 지갑 생성
+          </button>
 
           <div className="pt-4 border-t border-slate-800">
             <label className="block text-xs font-medium text-slate-400 mb-1">시드 구문 복구</label>
@@ -310,10 +316,10 @@ export default function Home() {
         </div>
       )}
 
-      {/* 3. 지갑 잠금 해제 및 메인 대시보드 */}
+      {/* 3. 대시보드 */}
       {vault && (
         <div className="w-full max-w-2xl space-y-6">
-          {/* 지갑 카드 */}
+          {/* 지갑 카드 및 자산 */}
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl relative">
             <div className="flex justify-between items-start mb-4">
               <div>
@@ -335,11 +341,11 @@ export default function Home() {
                 onClick={handleLock}
                 className="text-xs bg-slate-800 hover:bg-red-950 hover:text-red-300 px-3 py-1.5 rounded-lg text-slate-400 border border-slate-700"
               >
-                🔒 수동 잠금
+                🔒 잠금
               </button>
             </div>
 
-            {/* 잔액 표시 */}
+            {/* 잔액 */}
             <div className="my-6 text-center py-4 bg-slate-950/60 rounded-xl border border-slate-800">
               <span className="text-xs text-slate-400 block mb-1">보유 잔액</span>
               <div className="text-3xl font-black text-emerald-400 tracking-tight">
@@ -347,64 +353,35 @@ export default function Home() {
               </div>
             </div>
 
-            {/* 시드 및 개인키 복사 보안 기능 */}
-            <div className="flex gap-2">
+            {/* 📥 [Send] / [Receive] 주요 버튼 */}
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              <button
+                onClick={() => setShowSendModal(true)}
+                className="bg-gradient-to-r from-teal-500 to-emerald-600 hover:from-teal-600 hover:to-emerald-700 text-slate-950 font-bold py-3 rounded-xl text-sm transition flex items-center justify-center gap-2"
+              >
+                <span>💸</span> Send (송금)
+              </button>
+              <button
+                onClick={() => setShowReceiveModal(true)}
+                className="bg-slate-800 hover:bg-slate-700 text-teal-300 border border-teal-500/30 font-bold py-3 rounded-xl text-sm transition flex items-center justify-center gap-2"
+              >
+                <span>📥</span> Receive (수신)
+              </button>
+            </div>
+
+            {/* 시드 및 개인키 복사 */}
+            <div className="flex gap-2 pt-2 border-t border-slate-800">
               <button
                 onClick={() => handleCopy(vault.mnemonic, "시드 구문")}
-                className="flex-1 py-1.5 text-xs bg-slate-800 hover:bg-slate-700 rounded text-slate-300 border border-slate-700"
+                className="flex-1 py-1.5 text-xs bg-slate-950 hover:bg-slate-800 rounded text-slate-400 border border-slate-800"
               >
-                Seed Phrase 복사 🔑
+                Seed Phrase 🔑
               </button>
               <button
                 onClick={() => handleCopy(vault.privateKey, "개인키")}
-                className="flex-1 py-1.5 text-xs bg-slate-800 hover:bg-slate-700 rounded text-slate-300 border border-slate-700"
+                className="flex-1 py-1.5 text-xs bg-slate-950 hover:bg-slate-800 rounded text-slate-400 border border-slate-800"
               >
-                Private Key 복사 🛡️
-              </button>
-            </div>
-          </div>
-
-          {/* 💸 실시간 Gas Fee + 송금 양식 */}
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
-            <div className="flex justify-between items-center">
-              <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
-                <span>💸</span> 자산 송금 (Send)
-              </h3>
-              <span className="text-xs text-teal-400 font-mono">
-                예상 가스비: ~{estimatedGas} {currentNetwork.symbol}
-              </span>
-            </div>
-
-            <div className="space-y-3">
-              <div>
-                <label className="block text-xs text-slate-400 mb-1">수신 주소 (To Address)</label>
-                <input
-                  type="text"
-                  placeholder="0x..."
-                  value={toAddress}
-                  onChange={(e) => setToAddress(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs font-mono text-slate-100 focus:border-teal-500 outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs text-slate-400 mb-1">송금 수량 (Amount)</label>
-                <input
-                  type="number"
-                  step="0.0001"
-                  placeholder="0.0"
-                  value={sendAmount}
-                  onChange={(e) => setSendAmount(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-100 focus:border-teal-500 outline-none"
-                />
-              </div>
-
-              <button
-                onClick={handleOpenSendModal}
-                disabled={isLoading}
-                className="w-full bg-gradient-to-r from-teal-500 to-emerald-600 hover:from-teal-600 hover:to-emerald-700 text-slate-950 font-bold py-2.5 rounded-lg text-sm transition"
-              >
-                송금 내역 확인
+                Private Key 🛡️
               </button>
             </div>
           </div>
@@ -443,7 +420,109 @@ export default function Home() {
         </div>
       )}
 
-      {/* 🛑 송금 승인 모달 */}
+      {/* 📥 2. Receive 모달 (QR Code) */}
+      {showReceiveModal && vault && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex justify-center items-center p-4 z-50">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 w-full max-w-sm shadow-2xl space-y-4 text-center">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+              <h3 className="text-base font-bold text-slate-100 flex items-center gap-1.5">
+                <span>📥</span> Receive Assets
+              </h3>
+              <button
+                onClick={() => setShowReceiveModal(false)}
+                className="text-slate-400 hover:text-slate-200 text-sm"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* 네트워크 명시 */}
+            <div className="text-xs bg-slate-950 py-1.5 px-3 rounded-full inline-block text-purple-300 border border-purple-500/30">
+              네트워크: {currentNetwork.name}
+            </div>
+
+            {/* 📱 QR Code (지갑 주소만 포함, 시드/개인키 절대 제외) */}
+            <div className="bg-white p-4 rounded-xl inline-block shadow-inner">
+              <QRCodeSVG value={vault.address} size={180} level="H" />
+            </div>
+
+            {/* 주소 전체 및 축약 표시 */}
+            <div>
+              <span className="text-[11px] text-slate-400 block mb-1">지갑 주소</span>
+              <p className="text-xs font-mono font-semibold text-slate-200 bg-slate-950 p-2.5 rounded-lg border border-slate-800 break-all">
+                {vault.address}
+              </p>
+            </div>
+
+            <div className="pt-2">
+              <button
+                onClick={() => handleCopy(vault.address, "지갑 주소")}
+                className="w-full bg-teal-500 hover:bg-teal-600 text-slate-950 font-bold py-2.5 rounded-lg text-xs transition"
+              >
+                Copy Address (주소 복사)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 💸 Send 모달 */}
+      {showSendModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex justify-center items-center p-4 z-50">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 w-full max-w-md shadow-2xl space-y-4">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+              <h3 className="text-base font-bold text-slate-100 flex items-center gap-2">
+                <span>💸</span> Send Asset
+              </h3>
+              <button
+                onClick={() => setShowSendModal(false)}
+                className="text-slate-400 hover:text-slate-200 text-sm"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">수신 주소 (To Address)</label>
+                <input
+                  type="text"
+                  placeholder="0x..."
+                  value={toAddress}
+                  onChange={(e) => setToAddress(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs font-mono text-slate-100 focus:border-teal-500 outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">송금 수량 (Amount)</label>
+                <input
+                  type="number"
+                  step="0.0001"
+                  placeholder="0.0"
+                  value={sendAmount}
+                  onChange={(e) => setSendAmount(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-100 focus:border-teal-500 outline-none"
+                />
+              </div>
+
+              <div className="text-xs text-teal-400 font-mono text-right">
+                예상 가스비: ~{estimatedGas} {currentNetwork.symbol}
+              </div>
+
+              <button
+                onClick={handleOpenSendModal}
+                disabled={isLoading}
+                className="w-full bg-gradient-to-r from-teal-500 to-emerald-600 hover:from-teal-600 hover:to-emerald-700 text-slate-950 font-bold py-2.5 rounded-lg text-sm transition"
+              >
+                송금 내역 확인
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🛑 Send Confirm 모달 */}
       {showConfirmModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex justify-center items-center p-4 z-50">
           <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 w-full max-w-md shadow-2xl space-y-4">
