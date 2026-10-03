@@ -273,8 +273,7 @@ export async function fetchTransactionHistory(
   }
 }
 
-// 9. 클립보드 복사 및 자동 삭제 (30초 후 초기화 시도)
-// 9. 클립보드 복사 및 자동 삭제 (30초 후 초기화 시도 - 모바일/레거시 펄백 포함)
+// 9. 클립보드 복사 및 자동 삭제 시도 (모바일/레거시 펄백 포함)
 export async function copyToClipboardWithAutoClear(
   text: string,
   autoClearMs = 30000
@@ -315,7 +314,7 @@ export async function copyToClipboardWithAutoClear(
             fallbackCopy("");
           }
         } catch {
-          // 권한 상실 시 무시
+          // 브라우저/OS 권한 정책에 따라 삭제 실패 시 무시
         }
       }, autoClearMs);
     }
