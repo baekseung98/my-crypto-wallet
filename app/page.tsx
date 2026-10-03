@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   WalletVault,
   NETWORKS,
@@ -35,10 +35,41 @@ export default function Home() {
   const [estimatedGas, setEstimatedGas] = useState<string>("0.0001");
   const [showConfirmModal, setShowConfirmModal] = useState<boolean>(false);
 
-  // 복사 안내 메시지
+  // 복사 및 안내 메시지
   const [copyNotice, setCopyNotice] = useState<string>("");
 
+  // 🔒 ① [MVP 2단계] 자동 잠금 (Auto-Lock) 타이머 설정 (3분)
+  const AUTO_LOCK_MS = 3 * 60 * 1000;
+  const lockTimerRef = useRef<NodeJS.Timeout | null>(null);
+
   const currentNetwork = NETWORKS[selectedNetworkKey];
+
+  // 미활동 감지 및 잠금 함수
+  const resetLockTimer = () => {
+    if (lockTimerRef.current) clearTimeout(lockTimerRef.current);
+    if (vault) {
+      lockTimerRef.current = setTimeout(() => {
+        handleLock();
+        setStatusMsg("🔒 3분간 활동이 없어 지갑이 자동으로 잠겼습니다.");
+      }, AUTO_LOCK_MS);
+    }
+  };
+
+  useEffect(() => {
+    const handleActivity = () => resetLockTimer();
+    window.addEventListener("mousemove", handleActivity);
+    window.addEventListener("keydown", handleActivity);
+    window.addEventListener("click", handleActivity);
+
+    resetLockTimer();
+
+    return () => {
+      if (lockTimerRef.current) clearTimeout(lockTimerRef.current);
+      window.removeEventListener("mousemove", handleActivity);
+      window.removeEventListener("keydown", handleActivity);
+      window.removeEventListener("click", handleActivity);
+    };
+  }, [vault]);
 
   useEffect(() => {
     const saved = localStorage.getItem("earth_wallet_vault");
@@ -113,7 +144,7 @@ export default function Home() {
   const handleLock = () => {
     setVault(null);
     setInputPassword("");
-    setStatusMsg("지갑이 잠겼습니다.");
+    if (lockTimerRef.current) clearTimeout(lockTimerRef.current);
   };
 
   const handleOpenSendModal = () => {
@@ -304,7 +335,7 @@ export default function Home() {
                 onClick={handleLock}
                 className="text-xs bg-slate-800 hover:bg-red-950 hover:text-red-300 px-3 py-1.5 rounded-lg text-slate-400 border border-slate-700"
               >
-                🔒 잠금
+                🔒 수동 잠금
               </button>
             </div>
 
@@ -333,7 +364,7 @@ export default function Home() {
             </div>
           </div>
 
-          {/* 💸 1. 실시간 Gas Fee + 송금 양식 */}
+          {/* 💸 실시간 Gas Fee + 송금 양식 */}
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
             <div className="flex justify-between items-center">
               <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
@@ -412,7 +443,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* 🛑 2. 송금 승인 모달 (Send Confirm Modal) */}
+      {/* 🛑 송금 승인 모달 */}
       {showConfirmModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex justify-center items-center p-4 z-50">
           <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 w-full max-w-md shadow-2xl space-y-4">
