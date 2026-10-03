@@ -40,7 +40,7 @@ export default function Home() {
   // 📥 Receive 모달 state
   const [showReceiveModal, setShowReceiveModal] = useState<boolean>(false);
 
-  // 📜 ③ [MVP 2단계] Transaction Detail 모달 state
+  // 📜 Transaction Detail 모달 state
   const [selectedTx, setSelectedTx] = useState<TransactionItem | null>(null);
 
   // 복사 안내 메시지
@@ -197,7 +197,7 @@ export default function Home() {
   const handleCopy = async (text: string, label: string) => {
     const ok = await copyToClipboardWithAutoClear(text, 30000);
     if (ok) {
-      setCopyNotice(`${label} 복사됨 (30초 후 클립보드 자동 삭제)`);
+      setCopyNotice(`${label} 복사됨 (30초 후 클립보드 초기화 시도)`);
       setTimeout(() => setCopyNotice(""), 4000);
     }
   };
@@ -206,16 +206,21 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100 p-4 md:p-8 flex flex-col items-center">
-      {/* 🌍 Earth Wallet 헤더 */}
+      {/* 🌍 Earth Wallet Dashboard 상단 헤더 */}
       <header className="w-full max-w-2xl flex justify-between items-center mb-6 pb-4 border-b border-slate-800">
         <div className="flex items-center gap-2">
           <span className="text-2xl">🌍</span>
-          <h1 className="text-2xl font-extrabold tracking-tight bg-gradient-to-r from-emerald-400 via-teal-300 to-cyan-400 bg-clip-text text-transparent">
-            Earth Wallet
-          </h1>
+          <div>
+            <h1 className="text-2xl font-extrabold tracking-tight bg-gradient-to-r from-emerald-400 via-teal-300 to-cyan-400 bg-clip-text text-transparent">
+              Earth Wallet
+            </h1>
+            <span className="text-[10px] text-slate-400 block -mt-1 font-mono">
+              Dashboard
+            </span>
+          </div>
         </div>
 
-        {/* 🟣 네트워크 시각화 뱃지 */}
+        {/* 네트워크 및 잠금 버튼 */}
         <div className="flex items-center gap-2">
           <span
             className={`px-3 py-1 text-xs font-semibold rounded-full border ${
@@ -229,7 +234,7 @@ export default function Home() {
           <select
             value={selectedNetworkKey}
             onChange={(e) => setSelectedNetworkKey(e.target.value)}
-            className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-teal-500"
+            className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-teal-500"
           >
             {Object.entries(NETWORKS).map(([key, net]) => (
               <option key={key} value={key}>
@@ -237,10 +242,19 @@ export default function Home() {
               </option>
             ))}
           </select>
+
+          {vault && (
+            <button
+              onClick={handleLock}
+              className="text-xs bg-slate-900 hover:bg-red-950 hover:text-red-300 px-3 py-1.5 rounded-lg text-slate-400 border border-slate-800 transition"
+            >
+              🔒 Lock
+            </button>
+          )}
         </div>
       </header>
 
-      {/* 상태 메시지 */}
+      {/* 안내 메시지 */}
       {statusMsg && (
         <div className="w-full max-w-2xl mb-4 p-3 rounded-lg bg-teal-950/50 border border-teal-500/30 text-teal-200 text-xs text-center">
           {statusMsg}
@@ -323,53 +337,48 @@ export default function Home() {
       {/* 3. 대시보드 */}
       {vault && (
         <div className="w-full max-w-2xl space-y-6">
-          {/* 지갑 카드 */}
+          {/* Main Balance 카드 */}
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl relative">
-            <div className="flex justify-between items-start mb-4">
+            <div className="flex justify-between items-start mb-2">
               <div>
                 <span className="text-xs text-slate-400 font-mono">My Address</span>
-                <div className="flex items-center gap-2 mt-1">
+                <div className="flex items-center gap-2 mt-0.5">
                   <span className="font-mono text-sm font-semibold text-slate-200">
                     {vault.address.slice(0, 8)}...{vault.address.slice(-6)}
                   </span>
                   <button
                     onClick={() => handleCopy(vault.address, "주소")}
-                    className="text-xs bg-slate-800 hover:bg-slate-700 px-2 py-1 rounded text-slate-300"
+                    className="text-xs bg-slate-800 hover:bg-slate-700 px-2 py-0.5 rounded text-slate-300"
                   >
                     복사
                   </button>
                 </div>
               </div>
-
-              <button
-                onClick={handleLock}
-                className="text-xs bg-slate-800 hover:bg-red-950 hover:text-red-300 px-3 py-1.5 rounded-lg text-slate-400 border border-slate-700"
-              >
-                🔒 잠금
-              </button>
             </div>
 
-            {/* 잔액 */}
-            <div className="my-6 text-center py-4 bg-slate-950/60 rounded-xl border border-slate-800">
-              <span className="text-xs text-slate-400 block mb-1">보유 잔액</span>
+            {/* 메인 잔액 & 총 자산 */}
+            <div className="my-5 text-center py-5 bg-slate-950/70 rounded-xl border border-slate-800">
+              <span className="text-[11px] text-slate-400 block mb-1">
+                Main Balance ({currentNetwork.name})
+              </span>
               <div className="text-3xl font-black text-emerald-400 tracking-tight">
                 {isLoading ? "조회 중..." : `${balance} ${currentNetwork.symbol}`}
               </div>
             </div>
 
-            {/* [Send] / [Receive] 버튼 */}
+            {/* Quick Actions (Send | Receive) */}
             <div className="grid grid-cols-2 gap-3 mb-4">
               <button
                 onClick={() => setShowSendModal(true)}
                 className="bg-gradient-to-r from-teal-500 to-emerald-600 hover:from-teal-600 hover:to-emerald-700 text-slate-950 font-bold py-3 rounded-xl text-sm transition flex items-center justify-center gap-2"
               >
-                <span>💸</span> Send (송금)
+                <span>💸</span> Send
               </button>
               <button
                 onClick={() => setShowReceiveModal(true)}
                 className="bg-slate-800 hover:bg-slate-700 text-teal-300 border border-teal-500/30 font-bold py-3 rounded-xl text-sm transition flex items-center justify-center gap-2"
               >
-                <span>📥</span> Receive (수신)
+                <span>📥</span> Receive
               </button>
             </div>
 
@@ -390,9 +399,35 @@ export default function Home() {
             </div>
           </div>
 
-          {/* 📜 최근 거래 내역 목록 */}
+          {/* 💎 Assets (네이티브 자산 + ERC-20 확장용 구조) */}
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
-            <h3 className="text-sm font-bold text-slate-200 mb-3">최근 거래 내역 (클릭 시 상세)</h3>
+            <h3 className="text-sm font-bold text-slate-200 mb-3 flex items-center gap-1.5">
+              <span>💎</span> Assets (보유 자산)
+            </h3>
+            <div className="space-y-2">
+              <div className="flex justify-between items-center bg-slate-950 p-3 rounded-xl border border-slate-800">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full bg-teal-950 border border-teal-500/30 flex items-center justify-center font-bold text-xs text-teal-300">
+                    {currentNetwork.symbol}
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold text-slate-200">{currentNetwork.symbol}</div>
+                    <div className="text-[10px] text-slate-500">{currentNetwork.name} Native Token</div>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-xs font-bold text-emerald-400">{balance} {currentNetwork.symbol}</div>
+                  <div className="text-[10px] text-slate-500">Native Asset</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* 📜 Recent Transactions */}
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
+            <h3 className="text-sm font-bold text-slate-200 mb-3 flex items-center gap-1.5">
+              <span>📜</span> Recent Activity (최근 거래)
+            </h3>
             {txHistory.length === 0 ? (
               <p className="text-xs text-slate-500 text-center py-4">최근 거래 내역이 없습니다.</p>
             ) : (
@@ -401,7 +436,7 @@ export default function Home() {
                   <div
                     key={tx.hash}
                     onClick={() => setSelectedTx(tx)}
-                    className="flex justify-between items-center bg-slate-950 hover:bg-slate-800/80 p-3 rounded-lg text-xs font-mono border border-slate-800 cursor-pointer transition"
+                    className="flex justify-between items-center bg-slate-950 hover:bg-slate-800/80 p-3 rounded-xl text-xs font-mono border border-slate-800 cursor-pointer transition"
                   >
                     <div>
                       <div className="text-teal-400 font-semibold">
@@ -423,7 +458,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* 📜 ③ Transaction Detail 모달 */}
+      {/* 📜 Transaction Detail 모달 */}
       {selectedTx && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex justify-center items-center p-4 z-50">
           <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 w-full max-w-md shadow-2xl space-y-4">
