@@ -52,15 +52,39 @@ export default function Home() {
 
   const currentNetwork = NETWORKS[selectedNetworkKey];
 
+  // 🔒 P0: Auto-Lock 및 다중 탭 신호 감지
   const resetLockTimer = () => {
     if (lockTimerRef.current) clearTimeout(lockTimerRef.current);
     if (vault) {
       lockTimerRef.current = setTimeout(() => {
-        handleLock();
-        setStatusMsg("🔒 3분간 미활동으로 vault state 제거 및 잠금 처리되었습니다.");
+        // P0: 트랜잭션 실행 중일 때는 대기 후 진행
+        if (isLoading) {
+          resetLockTimer();
+          return;
+        }
+        handleLockWithSignal();
+        setStatusMsg("🔒 3분간 미활동으로 vault 참조 제거 및 잠금 처리되었습니다.");
       }, AUTO_LOCK_MS);
     }
   };
+
+  // P0: 타 탭 잠금 이벤트 동기화 (storage 이벤트를 통한 비민감 신호 수신)
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === "earth_wallet_lock_event") {
+        setVault(null);
+        setInputPassword("");
+        setShowReceiveModal(false);
+        setShowSendModal(false);
+        setShowConfirmModal(false);
+        setSelectedTx(null);
+        setStatusMsg("🔒 다른 탭에서 잠금 이벤트가 발생하여 현재 탭도 잠금 처리되었습니다.");
+      }
+    };
+
+    window.addEventListener("storage", handleStorageChange);
+    return () => window.removeEventListener("storage", handleStorageChange);
+  }, []);
 
   useEffect(() => {
     const handleActivity = () => resetLockTimer();
@@ -76,7 +100,7 @@ export default function Home() {
       window.removeEventListener("keydown", handleActivity);
       window.removeEventListener("click", handleActivity);
     };
-  }, [vault]);
+  }, [vault, isLoading]);
 
   useEffect(() => {
     const saved = localStorage.getItem("earth_wallet_vault");
@@ -148,6 +172,12 @@ export default function Home() {
     }
   };
 
+  // P0: 잠금 시 타 탭 동기화 신호 방출 (민감정보 없이 타임스탬프 단독 전송)
+  const handleLockWithSignal = () => {
+    handleLock();
+    localStorage.setItem("earth_wallet_lock_event", Date.now().toString());
+  };
+
   const handleLock = () => {
     setVault(null);
     setInputPassword("");
@@ -215,7 +245,7 @@ export default function Home() {
               Earth Wallet
             </h1>
             <span className="text-[10px] text-slate-400 block -mt-1 font-mono">
-              Dashboard
+              Dashboard (v0.2.0-Hardened)
             </span>
           </div>
         </div>
@@ -245,7 +275,7 @@ export default function Home() {
 
           {vault && (
             <button
-              onClick={handleLock}
+              onClick={handleLockWithSignal}
               className="text-xs bg-slate-900 hover:bg-red-950 hover:text-red-300 px-3 py-1.5 rounded-lg text-slate-400 border border-slate-800 transition"
             >
               🔒 Lock
@@ -356,7 +386,7 @@ export default function Home() {
               </div>
             </div>
 
-            {/* 메인 잔액 & 총 자산 */}
+            {/* 메인 잔액 */}
             <div className="my-5 text-center py-5 bg-slate-950/70 rounded-xl border border-slate-800">
               <span className="text-[11px] text-slate-400 block mb-1">
                 Main Balance ({currentNetwork.name})
@@ -366,7 +396,7 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Quick Actions (Send | Receive) */}
+            {/* Quick Actions */}
             <div className="grid grid-cols-2 gap-3 mb-4">
               <button
                 onClick={() => setShowSendModal(true)}
@@ -399,7 +429,7 @@ export default function Home() {
             </div>
           </div>
 
-          {/* 💎 Assets (네이티브 자산 + ERC-20 확장용 구조) */}
+          {/* Assets */}
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
             <h3 className="text-sm font-bold text-slate-200 mb-3 flex items-center gap-1.5">
               <span>💎</span> Assets (보유 자산)
@@ -423,7 +453,7 @@ export default function Home() {
             </div>
           </div>
 
-          {/* 📜 Recent Transactions */}
+          {/* Recent Activity */}
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
             <h3 className="text-sm font-bold text-slate-200 mb-3 flex items-center gap-1.5">
               <span>📜</span> Recent Activity (최근 거래)
@@ -458,7 +488,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* 📜 Transaction Detail 모달 */}
+      {/* Transaction Detail 모달 */}
       {selectedTx && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex justify-center items-center p-4 z-50">
           <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 w-full max-w-md shadow-2xl space-y-4">
@@ -546,7 +576,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* 📥 Receive 모달 */}
+      {/* Receive 모달 */}
       {showReceiveModal && vault && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex justify-center items-center p-4 z-50">
           <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 w-full max-w-sm shadow-2xl space-y-4 text-center">
@@ -589,7 +619,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* 💸 Send 모달 */}
+      {/* Send 모달 */}
       {showSendModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex justify-center items-center p-4 z-50">
           <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 w-full max-w-md shadow-2xl space-y-4">
@@ -645,7 +675,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* 🛑 Send Confirm 모달 */}
+      {/* Send Confirm 모달 */}
       {showConfirmModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex justify-center items-center p-4 z-50">
           <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 w-full max-w-md shadow-2xl space-y-4">
