@@ -1,506 +1,467 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import {
+  WalletVault,
+  NETWORKS,
   createNewWallet,
   restoreWalletFromMnemonic,
-  fetchBalance,
-  sendTransaction,
-  fetchTransactionHistory,
   encryptVault,
   decryptVault,
-  NETWORKS,
-  NetworkConfig,
-  WalletVault,
+  fetchBalance,
+  estimateGasFee,
+  sendTransaction,
+  fetchTransactionHistory,
   TransactionItem,
-} from "./lib/wallet";
+  copyToClipboardWithAutoClear,
+} from "@/lib/wallet";
 
 export default function Home() {
-  const [encryptedVault, setEncryptedVault] = useState<string | null>(null);
-  const [wallet, setWallet] = useState<WalletVault | null>(null);
-  const [password, setPassword] = useState<string>("");
-  const [isLocked, setIsLocked] = useState<boolean>(true);
+  const [password, setPassword] = useState("");
+  const [inputPassword, setInputPassword] = useState("");
+  const [mnemonicInput, setMnemonicInput] = useState("");
+  const [vault, setVault] = useState<WalletVault | null>(null);
+  const [encryptedStorage, setEncryptedStorage] = useState<string | null>(null);
+  const [selectedNetworkKey, setSelectedNetworkKey] = useState<string>("sepolia");
 
   const [balance, setBalance] = useState<string>("0.0000");
-  const [loading, setLoading] = useState<boolean>(false);
-  const [refreshing, setRefreshing] = useState<boolean>(false);
-
-  const [selectedNetwork, setSelectedNetwork] = useState<NetworkConfig>(NETWORKS.sepolia);
   const [txHistory, setTxHistory] = useState<TransactionItem[]>([]);
-  const [loadingHistory, setLoadingHistory] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [statusMsg, setStatusMsg] = useState<string>("");
 
-  const [mode, setMode] = useState<"create" | "import">("create");
-  const [inputMnemonic, setInputMnemonic] = useState<string>("");
-  const [errorMsg, setErrorMsg] = useState<string>("");
+  // 💸 송금 모달 state
+  const [toAddress, setToAddress] = useState<string>("");
+  const [sendAmount, setSendAmount] = useState<string>("");
+  const [estimatedGas, setEstimatedGas] = useState<string>("0.0001");
+  const [showConfirmModal, setShowConfirmModal] = useState<boolean>(false);
 
-  const [isSendOpen, setIsSendOpen] = useState<boolean>(false);
-  const [recipient, setRecipient] = useState<string>("");
-  const [amount, setAmount] = useState<string>("");
-  const [txHash, setTxHash] = useState<string>("");
-  const [sendLoading, setSendLoading] = useState<boolean>(false);
-  const [copied, setCopied] = useState<boolean>(false);
+  // 복사 안내 메시지
+  const [copyNotice, setCopyNotice] = useState<string>("");
 
-  const loadWalletData = async (address: string, network: NetworkConfig) => {
-    const ethBalance = await fetchBalance(address, network.rpcUrl);
-    
-    if (ethBalance !== "0.0000") {
-      setBalance(ethBalance);
-    } else {
-      const savedBalance = sessionStorage.getItem(`balance_${address}_${network.id}`);
-      setBalance(savedBalance || "0.1000");
-    }
-
-    setLoadingHistory(true);
-    const history = await fetchTransactionHistory(address, network.rpcUrl);
-    setTxHistory(history);
-    setLoadingHistory(false);
-  };
+  const currentNetwork = NETWORKS[selectedNetworkKey];
 
   useEffect(() => {
-    const savedEncrypted = localStorage.getItem("my_encrypted_crypto_wallet");
-    if (savedEncrypted) {
-      setEncryptedVault(savedEncrypted);
-      setIsLocked(true);
-    } else {
-      setIsLocked(false);
+    const saved = localStorage.getItem("earth_wallet_vault");
+    if (saved) {
+      setEncryptedStorage(saved);
     }
   }, []);
 
+  useEffect(() => {
+    if (vault) {
+      loadBalanceAndHistory();
+      updateGasFee();
+    }
+  }, [vault, selectedNetworkKey]);
+
+  const updateGasFee = async () => {
+    const fee = await estimateGasFee(currentNetwork.rpcUrl);
+    setEstimatedGas(fee);
+  };
+
+  const loadBalanceAndHistory = async () => {
+    if (!vault) return;
+    setIsLoading(true);
+    const bal = await fetchBalance(vault.address, currentNetwork.rpcUrl);
+    setBalance(bal);
+    const history = await fetchTransactionHistory(vault.address, currentNetwork.rpcUrl);
+    setTxHistory(history);
+    setIsLoading(false);
+  };
+
+  const handleCreateWallet = () => {
+    if (!password) {
+      alert("지갑 암호화를 위한 비밀번호를 입력해주세요.");
+      return;
+    }
+    const newV = createNewWallet();
+    const enc = encryptVault(newV, password);
+    localStorage.setItem("earth_wallet_vault", enc);
+    setEncryptedStorage(enc);
+    setVault(newV);
+    setStatusMsg("새로운 Earth Wallet 지갑이 생성되었습니다!");
+  };
+
+  const handleRestoreWallet = () => {
+    if (!password || !mnemonicInput) {
+      alert("비밀번호와 시드 구문을 입력해주세요.");
+      return;
+    }
+    try {
+      const restored = restoreWalletFromMnemonic(mnemonicInput);
+      const enc = encryptVault(restored, password);
+      localStorage.setItem("earth_wallet_vault", enc);
+      setEncryptedStorage(enc);
+      setVault(restored);
+      setStatusMsg("시드 구문으로 지갑 복구가 완료되었습니다.");
+    } catch (e: any) {
+      alert(e.message || "지갑 복구 실패");
+    }
+  };
+
   const handleUnlock = () => {
-    if (!encryptedVault || !password) return;
-    const decrypted = decryptVault(encryptedVault, password);
+    if (!encryptedStorage || !inputPassword) return;
+    const decrypted = decryptVault(encryptedStorage, inputPassword);
     if (decrypted) {
-      setWallet(decrypted);
-      setIsLocked(false);
-      setErrorMsg("");
-      loadWalletData(decrypted.address, selectedNetwork);
+      setVault(decrypted);
+      setStatusMsg("지갑 잠금이 해제되었습니다.");
     } else {
-      setErrorMsg("Incorrect Password. Please try again.");
+      alert("비밀번호가 일치하지 않습니다.");
     }
   };
 
   const handleLock = () => {
-    setWallet(null);
-    setPassword("");
-    setIsLocked(true);
+    setVault(null);
+    setInputPassword("");
+    setStatusMsg("지갑이 잠겼습니다.");
   };
 
-  const saveAndSetWallet = async (vault: WalletVault, pass: string) => {
-    const encrypted = encryptVault(vault, pass);
-    localStorage.setItem("my_encrypted_crypto_wallet", encrypted);
-    setEncryptedVault(encrypted);
-    setWallet(vault);
-    setIsLocked(false);
-    sessionStorage.setItem(`balance_${vault.address}_${selectedNetwork.id}`, "0.1000");
-    await loadWalletData(vault.address, selectedNetwork);
-  };
-
-  const handleCreateWallet = async () => {
-    if (!password || password.length < 4) {
-      setErrorMsg("Password must be at least 4 characters long.");
+  const handleOpenSendModal = () => {
+    if (!toAddress || !sendAmount) {
+      alert("수신 주소와 송금 금액을 입력해 주세요.");
       return;
     }
-    setLoading(true);
-    setErrorMsg("");
-    try {
-      const newVault = createNewWallet();
-      await saveAndSetWallet(newVault, password);
-    } catch (err) {
-      setErrorMsg("Failed to create wallet.");
-    } finally {
-      setLoading(false);
+    updateGasFee();
+    setShowConfirmModal(true);
+  };
+
+  const handleExecuteSend = async () => {
+    if (!vault) return;
+    setShowConfirmModal(false);
+    setIsLoading(true);
+    setStatusMsg("트랜잭션 전송 중...");
+
+    const res = await sendTransaction(
+      vault.privateKey,
+      toAddress,
+      sendAmount,
+      currentNetwork.rpcUrl
+    );
+
+    setIsLoading(false);
+    if (res.error) {
+      alert(`송금 실패: ${res.error}`);
+      setStatusMsg(`오류: ${res.error}`);
+    } else {
+      alert(`송금 성공! Hash: ${res.hash}`);
+      setStatusMsg(`송금 완료! Hash: ${res.hash?.slice(0, 10)}...`);
+      setToAddress("");
+      setSendAmount("");
+      loadBalanceAndHistory();
     }
   };
 
-  const handleImportWallet = async () => {
-    if (!inputMnemonic.trim()) {
-      setErrorMsg("Please enter a valid 12-word mnemonic phrase.");
-      return;
-    }
-    if (!password || password.length < 4) {
-      setErrorMsg("Password must be at least 4 characters long.");
-      return;
-    }
-    setLoading(true);
-    setErrorMsg("");
-    try {
-      const restoredVault = restoreWalletFromMnemonic(inputMnemonic);
-      await saveAndSetWallet(restoredVault, password);
-    } catch (err) {
-      setErrorMsg("Invalid mnemonic phrase. Please check and try again.");
-    } finally {
-      setLoading(false);
+  const handleCopy = async (text: string, label: string) => {
+    const ok = await copyToClipboardWithAutoClear(text, 30000);
+    if (ok) {
+      setCopyNotice(`${label} 복사됨 (30초 후 클립보드 자동 삭제)`);
+      setTimeout(() => setCopyNotice(""), 4000);
     }
   };
 
-  const handleRemoveWallet = () => {
-    if (confirm("Are you sure you want to remove this wallet? This will delete local encryption keys.")) {
-      localStorage.removeItem("my_encrypted_crypto_wallet");
-      localStorage.removeItem("my_crypto_wallet");
-      setEncryptedVault(null);
-      setWallet(null);
-      setPassword("");
-      setIsLocked(false);
-      setBalance("0.0000");
-      setTxHistory([]);
-    }
-  };
-
-  const handleNetworkChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const netKey = e.target.value;
-    const net = NETWORKS[netKey];
-    if (net) {
-      setSelectedNetwork(net);
-      if (wallet) {
-        await loadWalletData(wallet.address, net);
-      }
-    }
-  };
-
-  const handleRefreshBalance = async () => {
-    if (!wallet || refreshing) return;
-    setRefreshing(true);
-    try {
-      await loadWalletData(wallet.address, selectedNetwork);
-    } catch (err) {
-      console.error("Refresh error:", err);
-    } finally {
-      setTimeout(() => setRefreshing(false), 500);
-    }
-  };
-
-  const handleSendTx = async () => {
-    if (!wallet || !recipient || !amount) {
-      alert("Please fill in recipient address and amount.");
-      return;
-    }
-    setSendLoading(true);
-    setTxHash("");
-    try {
-      const hash = await sendTransaction(
-        wallet.privateKey,
-        recipient,
-        amount,
-        selectedNetwork.rpcUrl
-      );
-      setTxHash(hash);
-      await handleRefreshBalance();
-    } catch (err: any) {
-      const mockTxHash = "0x" + Array.from({length: 64}, () => Math.floor(Math.random()*16).toString(16)).join("");
-      setTxHash(mockTxHash);
-      const newBal = (parseFloat(balance) - parseFloat(amount)).toFixed(4);
-      setBalance(newBal > "0" ? newBal : "0.0000");
-      sessionStorage.setItem(`balance_${wallet.address}_${selectedNetwork.id}`, newBal);
-    } finally {
-      setSendLoading(false);
-    }
-  };
-
-  const copyAddress = () => {
-    if (wallet) {
-      navigator.clipboard.writeText(wallet.address);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
-  };
+  const totalAmountNeeded = (parseFloat(sendAmount || "0") + parseFloat(estimatedGas)).toFixed(6);
 
   return (
-    <main className="min-h-screen bg-slate-950 text-white flex flex-col items-center justify-center p-6 relative">
-      <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl">
-        {/* 헤더 및 네트워크 드롭다운 */}
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-xl font-bold text-indigo-400">
-            Web3 Crypto Wallet
+    <main className="min-h-screen bg-slate-950 text-slate-100 p-4 md:p-8 flex flex-col items-center">
+      {/* 🌍 Earth Wallet 헤더 & 브랜드 UI */}
+      <header className="w-full max-w-2xl flex justify-between items-center mb-6 pb-4 border-b border-slate-800">
+        <div className="flex items-center gap-2">
+          <span className="text-2xl">🌍</span>
+          <h1 className="text-2xl font-extrabold tracking-tight bg-gradient-to-r from-emerald-400 via-teal-300 to-cyan-400 bg-clip-text text-transparent">
+            Earth Wallet
           </h1>
-          <select
-            value={selectedNetwork.id}
-            onChange={handleNetworkChange}
-            className="bg-slate-950 text-emerald-400 border border-emerald-800/60 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none cursor-pointer font-mono"
+        </div>
+
+        {/* 🟣 네트워크 시각화 뱃지 */}
+        <div className="flex items-center gap-2">
+          <span
+            className={`px-3 py-1 text-xs font-semibold rounded-full border ${
+              currentNetwork.isTestnet
+                ? "bg-purple-950/80 text-purple-300 border-purple-500/50"
+                : "bg-emerald-950/80 text-emerald-300 border-emerald-500/50"
+            }`}
           >
-            {Object.values(NETWORKS).map((net) => (
-              <option key={net.id} value={net.id} className="bg-slate-900 text-white">
-                ● {net.name}
+            {currentNetwork.isTestnet ? "🟣 Testnet" : "🟢 Mainnet"}
+          </span>
+          <select
+            value={selectedNetworkKey}
+            onChange={(e) => setSelectedNetworkKey(e.target.value)}
+            className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-teal-500"
+          >
+            {Object.entries(NETWORKS).map(([key, net]) => (
+              <option key={key} value={key}>
+                {net.name}
               </option>
             ))}
           </select>
         </div>
+      </header>
 
-        {/* 🔒 잠금 화면 UI */}
-        {isLocked && encryptedVault ? (
-          <div className="space-y-4 py-4 text-center">
-            <div className="w-16 h-16 bg-indigo-950/80 border border-indigo-800/60 rounded-full flex items-center justify-center mx-auto text-2xl">
-              🔒
-            </div>
-            <h2 className="text-lg font-bold text-slate-200">Wallet Locked</h2>
-            <p className="text-xs text-slate-400">Enter your password to unlock your wallet.</p>
+      {/* 상태 메시지 / 안내 */}
+      {statusMsg && (
+        <div className="w-full max-w-2xl mb-4 p-3 rounded-lg bg-teal-950/50 border border-teal-500/30 text-teal-200 text-xs text-center">
+          {statusMsg}
+        </div>
+      )}
+
+      {copyNotice && (
+        <div className="w-full max-w-2xl mb-4 p-3 rounded-lg bg-amber-950/50 border border-amber-500/30 text-amber-200 text-xs text-center">
+          {copyNotice}
+        </div>
+      )}
+
+      {/* 1. 지갑 미보유 상태 */}
+      {!vault && !encryptedStorage && (
+        <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
+          <h2 className="text-lg font-bold text-center text-slate-200">Earth Wallet 시작하기</h2>
+
+          <div>
+            <label className="block text-xs font-medium text-slate-400 mb-1">
+              보안 암호화 비밀번호
+            </label>
             <input
               type="password"
-              placeholder="Enter Wallet Password"
+              placeholder="비밀번호 설정"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-sm focus:outline-none focus:border-indigo-500 text-center"
+              className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-100 focus:border-teal-500 outline-none"
             />
-            {errorMsg && <p className="text-xs text-rose-400">{errorMsg}</p>}
+          </div>
+
+          <div className="flex gap-2">
             <button
-              onClick={handleUnlock}
-              className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 font-semibold rounded-xl transition"
+              onClick={handleCreateWallet}
+              className="flex-1 bg-gradient-to-r from-teal-500 to-emerald-600 hover:from-teal-600 hover:to-emerald-700 text-slate-950 font-bold py-2.5 rounded-lg text-sm transition"
             >
-              Unlock Wallet
-            </button>
-            <button
-              onClick={handleRemoveWallet}
-              className="text-xs text-rose-400 hover:underline pt-2 block mx-auto"
-            >
-              Reset & Remove Wallet
+              신규 지갑 생성
             </button>
           </div>
-        ) : !wallet ? (
-          /* ➕ 지갑 생성/복구 UI (비밀번호 입력 포함) */
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-2 bg-slate-800 p-1 rounded-xl">
+
+          <div className="pt-4 border-t border-slate-800">
+            <label className="block text-xs font-medium text-slate-400 mb-1">시드 구문 복구</label>
+            <textarea
+              placeholder="12개 단어 입력"
+              value={mnemonicInput}
+              onChange={(e) => setMnemonicInput(e.target.value)}
+              className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-slate-100 h-16 focus:border-teal-500 outline-none mb-2"
+            />
+            <button
+              onClick={handleRestoreWallet}
+              className="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold py-2 rounded-lg text-xs transition"
+            >
+              시드 구문으로 복구
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 2. 지갑 잠김 상태 */}
+      {!vault && encryptedStorage && (
+        <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4 text-center">
+          <span className="text-4xl">🔐</span>
+          <h2 className="text-lg font-bold text-slate-200">Earth Wallet 잠김</h2>
+          <p className="text-xs text-slate-400">설정하신 비밀번호를 입력하여 해제하세요.</p>
+
+          <input
+            type="password"
+            placeholder="비밀번호 입력"
+            value={inputPassword}
+            onChange={(e) => setInputPassword(e.target.value)}
+            className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-100 focus:border-teal-500 outline-none"
+          />
+
+          <button
+            onClick={handleUnlock}
+            className="w-full bg-teal-500 hover:bg-teal-600 text-slate-950 font-bold py-2.5 rounded-lg text-sm transition"
+          >
+            지갑 잠금 해제
+          </button>
+        </div>
+      )}
+
+      {/* 3. 지갑 잠금 해제 및 메인 대시보드 */}
+      {vault && (
+        <div className="w-full max-w-2xl space-y-6">
+          {/* 지갑 카드 */}
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl relative">
+            <div className="flex justify-between items-start mb-4">
+              <div>
+                <span className="text-xs text-slate-400 font-mono">My Address</span>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="font-mono text-sm font-semibold text-slate-200">
+                    {vault.address.slice(0, 8)}...{vault.address.slice(-6)}
+                  </span>
+                  <button
+                    onClick={() => handleCopy(vault.address, "주소")}
+                    className="text-xs bg-slate-800 hover:bg-slate-700 px-2 py-1 rounded text-slate-300"
+                  >
+                    복사
+                  </button>
+                </div>
+              </div>
+
               <button
-                onClick={() => { setMode("create"); setErrorMsg(""); }}
-                className={`py-2 text-xs font-semibold rounded-lg transition ${
-                  mode === "create" ? "bg-indigo-600 text-white" : "text-slate-400"
-                }`}
+                onClick={handleLock}
+                className="text-xs bg-slate-800 hover:bg-red-950 hover:text-red-300 px-3 py-1.5 rounded-lg text-slate-400 border border-slate-700"
               >
-                Create New
-              </button>
-              <button
-                onClick={() => { setMode("import"); setErrorMsg(""); }}
-                className={`py-2 text-xs font-semibold rounded-lg transition ${
-                  mode === "import" ? "bg-indigo-600 text-white" : "text-slate-400"
-                }`}
-              >
-                Import Wallet
+                🔒 잠금
               </button>
             </div>
 
-            {mode === "create" ? (
-              <div className="space-y-3 mt-4">
-                <input
-                  type="password"
-                  placeholder="Set Password for Wallet Encryption"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-sm focus:outline-none focus:border-indigo-500"
-                />
-                <button
-                  onClick={handleCreateWallet}
-                  disabled={loading}
-                  className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-500 font-semibold rounded-xl transition duration-200"
-                >
-                  {loading ? "Generating..." : "Generate New Wallet"}
-                </button>
+            {/* 잔액 표시 */}
+            <div className="my-6 text-center py-4 bg-slate-950/60 rounded-xl border border-slate-800">
+              <span className="text-xs text-slate-400 block mb-1">보유 잔액</span>
+              <div className="text-3xl font-black text-emerald-400 tracking-tight">
+                {isLoading ? "조회 중..." : `${balance} ${currentNetwork.symbol}`}
               </div>
-            ) : (
-              <div className="space-y-3 mt-4">
-                <textarea
-                  value={inputMnemonic}
-                  onChange={(e) => setInputMnemonic(e.target.value)}
-                  placeholder="Paste your 12-word secret recovery phrase here..."
-                  className="w-full h-20 p-3 bg-slate-950 border border-slate-800 rounded-xl text-sm focus:outline-none focus:border-indigo-500 font-mono resize-none"
-                />
-                <input
-                  type="password"
-                  placeholder="Set Password for Wallet Encryption"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-sm focus:outline-none focus:border-indigo-500"
-                />
-                <button
-                  onClick={handleImportWallet}
-                  disabled={loading}
-                  className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-500 font-semibold rounded-xl transition duration-200"
-                >
-                  {loading ? "Restoring..." : "Restore Wallet"}
-                </button>
-              </div>
-            )}
+            </div>
 
-            {errorMsg && (
-              <p className="text-xs text-rose-400 text-center font-medium">
-                {errorMsg}
-              </p>
+            {/* 시드 및 개인키 복사 보안 기능 */}
+            <div className="flex gap-2">
+              <button
+                onClick={() => handleCopy(vault.mnemonic, "시드 구문")}
+                className="flex-1 py-1.5 text-xs bg-slate-800 hover:bg-slate-700 rounded text-slate-300 border border-slate-700"
+              >
+                Seed Phrase 복사 🔑
+              </button>
+              <button
+                onClick={() => handleCopy(vault.privateKey, "개인키")}
+                className="flex-1 py-1.5 text-xs bg-slate-800 hover:bg-slate-700 rounded text-slate-300 border border-slate-700"
+              >
+                Private Key 복사 🛡️
+              </button>
+            </div>
+          </div>
+
+          {/* 💸 1. 실시간 Gas Fee + 송금 양식 */}
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
+            <div className="flex justify-between items-center">
+              <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
+                <span>💸</span> 자산 송금 (Send)
+              </h3>
+              <span className="text-xs text-teal-400 font-mono">
+                예상 가스비: ~{estimatedGas} {currentNetwork.symbol}
+              </span>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">수신 주소 (To Address)</label>
+                <input
+                  type="text"
+                  placeholder="0x..."
+                  value={toAddress}
+                  onChange={(e) => setToAddress(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs font-mono text-slate-100 focus:border-teal-500 outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">송금 수량 (Amount)</label>
+                <input
+                  type="number"
+                  step="0.0001"
+                  placeholder="0.0"
+                  value={sendAmount}
+                  onChange={(e) => setSendAmount(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-100 focus:border-teal-500 outline-none"
+                />
+              </div>
+
+              <button
+                onClick={handleOpenSendModal}
+                disabled={isLoading}
+                className="w-full bg-gradient-to-r from-teal-500 to-emerald-600 hover:from-teal-600 hover:to-emerald-700 text-slate-950 font-bold py-2.5 rounded-lg text-sm transition"
+              >
+                송금 내역 확인
+              </button>
+            </div>
+          </div>
+
+          {/* 📜 최근 거래 내역 */}
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
+            <h3 className="text-sm font-bold text-slate-200 mb-3">최근 거래 내역</h3>
+            {txHistory.length === 0 ? (
+              <p className="text-xs text-slate-500 text-center py-4">최근 거래 내역이 없습니다.</p>
+            ) : (
+              <div className="space-y-2">
+                {txHistory.map((tx) => (
+                  <div
+                    key={tx.hash}
+                    className="flex justify-between items-center bg-slate-950 p-3 rounded-lg text-xs font-mono border border-slate-800"
+                  >
+                    <div>
+                      <a
+                        href={`${currentNetwork.explorerUrl}/tx/${tx.hash}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-teal-400 hover:underline"
+                      >
+                        {tx.hash.slice(0, 10)}...
+                      </a>
+                      <div className="text-slate-500 text-[10px] mt-0.5">
+                        To: {tx.to.slice(0, 6)}...
+                      </div>
+                    </div>
+                    <span className="text-emerald-400 font-semibold">{tx.value} ETH</span>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
-        ) : (
-          /* 🔓 메인 지갑 대시보드 UI */
-          <div className="space-y-6">
-            <div className="bg-slate-800/80 p-5 rounded-xl text-center border border-slate-700 relative">
-              <div className="absolute top-3 left-3">
-                <button
-                  onClick={handleLock}
-                  className="text-xs bg-slate-900 border border-slate-700 px-2.5 py-1 rounded-md text-slate-300 hover:text-white transition"
-                  title="Lock Wallet"
-                >
-                  🔒 Lock
-                </button>
+        </div>
+      )}
+
+      {/* 🛑 2. 송금 승인 모달 (Send Confirm Modal) */}
+      {showConfirmModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex justify-center items-center p-4 z-50">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 w-full max-w-md shadow-2xl space-y-4">
+            <h3 className="text-base font-bold text-slate-100 border-b border-slate-800 pb-3">
+              Send {currentNetwork.symbol} 최종 확인
+            </h3>
+
+            <div className="space-y-2 text-xs font-mono">
+              <div className="flex justify-between py-1 border-b border-slate-800/50">
+                <span className="text-slate-400">To:</span>
+                <span className="text-slate-200">
+                  {toAddress.slice(0, 10)}...{toAddress.slice(-6)}
+                </span>
               </div>
-              <button
-                onClick={handleRefreshBalance}
-                disabled={refreshing}
-                className={`absolute top-3 right-3 text-sm p-1 text-slate-400 hover:text-white transition duration-300 ${
-                  refreshing ? "animate-spin text-indigo-400" : ""
-                }`}
-                title="Refresh Balance"
-              >
-                🔄
-              </button>
-              <span className="text-xs text-slate-400 uppercase tracking-wider font-semibold block mt-4">
-                Total Balance ({selectedNetwork.symbol})
-              </span>
-              <p className="text-3xl font-extrabold my-2 text-indigo-300">
-                {balance} {selectedNetwork.symbol}
-              </p>
-              <div
-                onClick={copyAddress}
-                className="text-xs text-slate-400 break-all bg-slate-900/60 p-2.5 rounded-lg mt-3 cursor-pointer hover:bg-slate-950 transition flex items-center justify-between"
-              >
-                <span className="truncate pr-2">{wallet.address}</span>
-                <span className="text-[10px] text-indigo-400 font-semibold shrink-0">
-                  {copied ? "Copied!" : "Copy"}
+
+              <div className="flex justify-between py-1 border-b border-slate-800/50">
+                <span className="text-slate-400">Amount:</span>
+                <span className="text-teal-400 font-bold">
+                  {sendAmount} {currentNetwork.symbol}
+                </span>
+              </div>
+
+              <div className="flex justify-between py-1 border-b border-slate-800/50">
+                <span className="text-slate-400">Estimated Gas:</span>
+                <span className="text-slate-300">
+                  {estimatedGas} {currentNetwork.symbol}
+                </span>
+              </div>
+
+              <div className="flex justify-between py-2 bg-slate-950 px-3 rounded-lg border border-slate-800">
+                <span className="text-slate-300 font-bold">Total Needed:</span>
+                <span className="text-emerald-400 font-black">
+                  {totalAmountNeeded} {currentNetwork.symbol}
                 </span>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="flex gap-3 pt-2">
               <button
-                onClick={() => setIsSendOpen(true)}
-                className="py-3 bg-indigo-600 hover:bg-indigo-500 rounded-xl text-sm font-semibold transition"
-              >
-                Send
-              </button>
-              <button
-                onClick={handleRemoveWallet}
-                className="py-3 bg-rose-950/40 border border-rose-800/50 hover:bg-rose-900/50 text-rose-300 rounded-xl text-sm font-semibold transition"
-              >
-                Remove Wallet
-              </button>
-            </div>
-
-            {/* 거래 내역 */}
-            <div className="space-y-3 pt-2">
-              <div className="flex items-center justify-between">
-                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-                  Recent Transactions
-                </h3>
-                <a
-                  href={`${selectedNetwork.explorerUrl}/address/${wallet.address}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-[11px] text-indigo-400 hover:underline"
-                >
-                  View All ↗
-                </a>
-              </div>
-
-              {loadingHistory ? (
-                <p className="text-xs text-slate-500 text-center py-4">
-                  Fetching recent history...
-                </p>
-              ) : txHistory.length === 0 ? (
-                <p className="text-xs text-slate-500 text-center py-4 bg-slate-950/40 rounded-xl border border-slate-800/50">
-                  No recent transactions on {selectedNetwork.name}.
-                </p>
-              ) : (
-                <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                  {txHistory.map((tx) => {
-                    const isSend = tx.from.toLowerCase() === wallet.address.toLowerCase();
-                    return (
-                      <a
-                        key={tx.hash}
-                        href={`${selectedNetwork.explorerUrl}/tx/${tx.hash}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="flex items-center justify-between p-3 bg-slate-950/60 hover:bg-slate-950 border border-slate-800/80 rounded-xl transition text-xs"
-                      >
-                        <div className="flex items-center gap-2.5">
-                          <span
-                            className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs ${
-                              isSend
-                                ? "bg-rose-950 text-rose-400 border border-rose-800/50"
-                                : "bg-emerald-950 text-emerald-400 border border-emerald-800/50"
-                            }`}
-                          >
-                            {isSend ? "↑" : "↓"}
-                          </span>
-                          <div>
-                            <p className="font-semibold text-slate-200">
-                              {isSend ? `Sent ${selectedNetwork.symbol}` : `Received ${selectedNetwork.symbol}`}
-                            </p>
-                            <p className="text-[10px] text-slate-500 font-mono">
-                              Block #{tx.blockNumber}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <p
-                            className={`font-mono font-bold ${
-                              isSend ? "text-rose-400" : "text-emerald-400"
-                            }`}
-                          >
-                            {isSend ? "-" : "+"}{tx.value} {selectedNetwork.symbol}
-                          </p>
-                        </div>
-                      </a>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Send Modal */}
-      {isSendOpen && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl w-full max-w-sm space-y-4">
-            <h2 className="text-lg font-bold text-white">Send {selectedNetwork.symbol}</h2>
-            <p className="text-xs text-slate-400">Network: {selectedNetwork.name}</p>
-            <input
-              type="text"
-              placeholder="Recipient Address (0x...)"
-              value={recipient}
-              onChange={(e) => setRecipient(e.target.value)}
-              className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-xs focus:outline-none focus:border-indigo-500 font-mono"
-            />
-            <input
-              type="number"
-              placeholder={`Amount (${selectedNetwork.symbol})`}
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-xs focus:outline-none focus:border-indigo-500"
-            />
-
-            {txHash && (
-              <div className="p-3 bg-emerald-950/50 border border-emerald-800/60 rounded-lg text-xs break-all text-emerald-300 space-y-1">
-                <p className="font-bold">✓ Transaction Sent!</p>
-                <a
-                  href={`${selectedNetwork.explorerUrl}/tx/${txHash}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="underline text-indigo-300 block truncate"
-                >
-                  View on Explorer
-                </a>
-              </div>
-            )}
-
-            <div className="flex gap-2">
-              <button
-                onClick={() => setIsSendOpen(false)}
-                className="w-1/2 py-2.5 bg-slate-800 hover:bg-slate-700 text-xs font-semibold rounded-xl"
+                onClick={() => setShowConfirmModal(false)}
+                className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold py-2.5 rounded-lg text-xs transition"
               >
                 Cancel
               </button>
               <button
-                onClick={handleSendTx}
-                disabled={sendLoading}
-                className="w-1/2 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-xs font-semibold rounded-xl"
+                onClick={handleExecuteSend}
+                className="flex-1 bg-teal-500 hover:bg-teal-600 text-slate-950 font-bold py-2.5 rounded-lg text-xs transition"
               >
-                {sendLoading ? "Sending..." : "Confirm Send"}
+                Confirm
               </button>
             </div>
           </div>

@@ -21,15 +21,17 @@ export interface NetworkConfig {
   symbol: string;
   rpcUrl: string;
   explorerUrl: string;
+  isTestnet: boolean;
 }
 
 export const NETWORKS: Record<string, NetworkConfig> = {
   sepolia: {
     id: "sepolia",
-    name: "Ethereum Sepolia (Testnet)",
+    name: "Sepolia Testnet",
     symbol: "ETH",
     rpcUrl: "https://ethereum-sepolia-rpc.publicnode.com",
     explorerUrl: "https://sepolia.etherscan.io",
+    isTestnet: true,
   },
   ethereum: {
     id: "ethereum",
@@ -37,6 +39,7 @@ export const NETWORKS: Record<string, NetworkConfig> = {
     symbol: "ETH",
     rpcUrl: "https://eth.llamarpc.com",
     explorerUrl: "https://etherscan.io",
+    isTestnet: false,
   },
   polygon: {
     id: "polygon",
@@ -44,6 +47,7 @@ export const NETWORKS: Record<string, NetworkConfig> = {
     symbol: "POL",
     rpcUrl: "https://polygon-rpc.com",
     explorerUrl: "https://polygonscan.com",
+    isTestnet: false,
   },
   arbitrum: {
     id: "arbitrum",
@@ -51,26 +55,75 @@ export const NETWORKS: Record<string, NetworkConfig> = {
     symbol: "ETH",
     rpcUrl: "https://arb1.arbitrum.io/rpc",
     explorerUrl: "https://arbiscan.io",
+    isTestnet: false,
   },
 };
 
-// 🔐 [보안 1] 클라이언트 단 AES 암호화
+// 🔐 [강화된 보안 1] PBKDF2 키 파생 + Salt/IV 명시적 생성 기반 AES-256 암호화
 export const encryptVault = (vault: WalletVault, password: string): string => {
-  return CryptoJS.AES.encrypt(JSON.stringify(vault), password).toString();
+  const salt = CryptoJS.lib.WordArray.random(128 / 8);
+  const iv = CryptoJS.lib.WordArray.random(128 / 8);
+
+  const key = CryptoJS.PBKDF2(password, salt, {
+    keySize: 256 / 32,
+    iterations: 100000,
+    hasher: CryptoJS.algo.SHA256,
+  });
+
+  const encrypted = CryptoJS.AES.encrypt(JSON.stringify(vault), key, {
+    iv: iv,
+    padding: CryptoJS.pad.Pkcs7,
+    mode: CryptoJS.mode.CBC,
+  });
+
+  const combined = {
+    salt: CryptoJS.enc.Hex.stringify(salt),
+    iv: CryptoJS.enc.Hex.stringify(iv),
+    ciphertext: encrypted.ciphertext.toString(CryptoJS.enc.Hex),
+  };
+
+  return JSON.stringify(combined);
 };
 
-export const decryptVault = (encryptedData: string, password: string): WalletVault | null => {
+export const decryptVault = (encryptedDataString: string, password: string): WalletVault | null => {
   try {
-    const bytes = CryptoJS.AES.decrypt(encryptedData, password);
-    const decryptedText = bytes.toString(CryptoJS.enc.Utf8);
-    if (!decryptedText) return null;
-    return JSON.parse(decryptedText);
+    const combined = JSON.parse(encryptedDataString);
+    if (!combined.salt || !combined.iv || !combined.ciphertext) {
+      // 구버전 하위 호환
+      const bytes = CryptoJS.AES.decrypt(encryptedDataString, password);
+      const text = bytes.toString(CryptoJS.enc.Utf8);
+      return text ? JSON.parse(text) : null;
+    }
+
+    const salt = CryptoJS.enc.Hex.parse(combined.salt);
+    const iv = CryptoJS.enc.Hex.parse(combined.iv);
+    const ciphertext = CryptoJS.enc.Hex.parse(combined.ciphertext);
+
+    const key = CryptoJS.PBKDF2(password, salt, {
+      keySize: 256 / 32,
+      iterations: 100000,
+      hasher: CryptoJS.algo.SHA256,
+    });
+
+    const cipherParams = CryptoJS.lib.CipherParams.create({
+      ciphertext: ciphertext,
+    });
+
+    const decrypted = CryptoJS.AES.decrypt(cipherParams, key, {
+      iv: iv,
+      padding: CryptoJS.pad.Pkcs7,
+      mode: CryptoJS.mode.CBC,
+    });
+
+    const text = decrypted.toString(CryptoJS.enc.Utf8);
+    if (!text) return null;
+    return JSON.parse(text);
   } catch (e) {
     return null;
   }
 };
 
-// 🔐 [보안 2] 클립보드 30초 후 자동 삭제 함수
+// 🔐 [보안 2] 클립보드 30초 후 자동 삭제
 export const copyToClipboardWithAutoClear = async (text: string, clearAfterMs: number = 30000): Promise<boolean> => {
   try {
     await navigator.clipboard.writeText(text);
@@ -80,13 +133,10 @@ export const copyToClipboardWithAutoClear = async (text: string, clearAfterMs: n
         if (currentText === text) {
           await navigator.clipboard.writeText("");
         }
-      } catch (e) {
-        // 권한 제한 시 무시
-      }
+      } catch (e) {}
     }, clearAfterMs);
     return true;
   } catch (err) {
-    console.error("Clipboard copy failed:", err);
     return false;
   }
 };
@@ -119,12 +169,23 @@ export const fetchBalance = async (address: string, rpcUrl: string): Promise<str
     const balance = await provider.getBalance(address);
     return parseFloat(ethers.formatEther(balance)).toFixed(4);
   } catch (error) {
-    console.error("Balance fetch failed:", error);
     return "0.0000";
   }
 };
 
-// 🧪 [검증 2] 송금 전 검증 및 예외 처리 강화
+// ⛽ [UX 1] 실시간 가스비 예측
+export const estimateGasFee = async (rpcUrl: string): Promise<string> => {
+  try {
+    const provider = new ethers.JsonRpcProvider(rpcUrl);
+    const feeData = await provider.getFeeData();
+    const gasLimit = 21000n;
+    const gasFee = (feeData.gasPrice || 0n) * gasLimit;
+    return parseFloat(ethers.formatEther(gasFee)).toFixed(6);
+  } catch (e) {
+    return "0.000100";
+  }
+};
+
 export const sendTransaction = async (
   privateKey: string,
   toAddress: string,
@@ -132,24 +193,21 @@ export const sendTransaction = async (
   rpcUrl: string
 ): Promise<{ hash?: string; error?: string }> => {
   try {
-    // 1. 주소 유효성 검사
     if (!ethers.isAddress(toAddress)) {
-      return { error: "올바른 이더리움 지갑 주소 형식이 아닙니다." };
+      return { error: "올바른 지갑 주소 형식이 아닙니다." };
     }
 
     const provider = new ethers.JsonRpcProvider(rpcUrl);
     const signer = new ethers.Wallet(privateKey, provider);
 
-    // 2. 입력 수량 검사
     const parsedAmount = ethers.parseEther(amountEth);
     if (parsedAmount <= 0n) {
       return { error: "송금 금액은 0보다 크여야 합니다." };
     }
 
-    // 3. 잔액 및 가스비 검사
     const balance = await provider.getBalance(signer.address);
     const feeData = await provider.getFeeData();
-    const gasLimit = 21000n; // 기본 이더리움 전송 가스
+    const gasLimit = 21000n;
     const estimatedGasFee = (feeData.gasPrice || 0n) * gasLimit;
 
     if (balance < parsedAmount + estimatedGasFee) {
@@ -163,7 +221,6 @@ export const sendTransaction = async (
 
     return { hash: tx.hash };
   } catch (err: any) {
-    console.error("Transaction failed:", err);
     return { error: err.message || "트랜잭션 전송 중 오류가 발생했습니다." };
   }
 };
@@ -200,7 +257,6 @@ export const fetchTransactionHistory = async (
     }
     return history;
   } catch (error) {
-    console.error("Failed to fetch tx history:", error);
     return [];
   }
 };
