@@ -274,22 +274,54 @@ export async function fetchTransactionHistory(
 }
 
 // 9. 클립보드 복사 및 자동 삭제 (30초 후 초기화 시도)
+// 9. 클립보드 복사 및 자동 삭제 (30초 후 초기화 시도 - 모바일/레거시 펄백 포함)
 export async function copyToClipboardWithAutoClear(
   text: string,
   autoClearMs = 30000
 ): Promise<boolean> {
+  const fallbackCopy = (str: string): boolean => {
+    try {
+      const textArea = document.createElement("textarea");
+      textArea.value = str;
+      textArea.style.position = "fixed";
+      textArea.style.left = "-9999px";
+      textArea.style.top = "-9999px";
+      document.body.appendChild(textArea);
+      textArea.focus();
+      textArea.select();
+      const successful = document.execCommand("copy");
+      document.body.removeChild(textArea);
+      return successful;
+    } catch {
+      return false;
+    }
+  };
+
   try {
-    await navigator.clipboard.writeText(text);
-    setTimeout(async () => {
-      try {
-        await navigator.clipboard.writeText("");
-      } catch {
-        // 클립보드 접근 권한 상실 시 무시
-      }
-    }, autoClearMs);
-    return true;
-  } catch (e) {
-    console.error("Clipboard Copy Error:", e);
-    return false;
+    let success = false;
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      success = true;
+    } else {
+      success = fallbackCopy(text);
+    }
+
+    if (success) {
+      setTimeout(async () => {
+        try {
+          if (navigator.clipboard && window.isSecureContext) {
+            await navigator.clipboard.writeText("");
+          } else {
+            fallbackCopy("");
+          }
+        } catch {
+          // 권한 상실 시 무시
+        }
+      }, autoClearMs);
+    }
+
+    return success;
+  } catch {
+    return fallbackCopy(text);
   }
 }
