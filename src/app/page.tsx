@@ -5,108 +5,97 @@ import { NftMarketView } from "@/components/nft/nft-market-view";
 import { NftListModal } from "@/components/nft/nft-list-modal";
 import { LaunchpadView } from "@/components/launchpad/launchpad-view";
 
-export default function EarthWalletDashboard() {
+export default function Home() {
   const [activeTab, setActiveTab] = useState<"wallet" | "dex" | "nft" | "launchpad">("wallet");
-  const [walletCreated, setWalletCreated] = useState(false);
-  const [walletAddress, setWalletAddress] = useState("");
-  const [mnemonic, setMnemonic] = useState("");
+  const [walletAddress] = useState("0x8145e7a478f73441BD2978E4B76F618cc19C91D");
+  const [balance] = useState("0.1000 ETH");
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  const handleCreateWallet = () => {
-    const mockAddress = "0x71C...38a9 (Sepolia Testnet)";
-    const mockMnemonic = "earth anchor protocol secure testnet mnemonic phrase dummy seed";
-    setWalletAddress(mockAddress);
-    setMnemonic(mockMnemonic);
-    setWalletCreated(true);
-  };
-
   return (
-    <div style={{ minHeight: "100vh", background: "#f4f6f8", fontFamily: "sans-serif", paddingBottom: "40px" }}>
-      <header style={{ background: "#111827", color: "#fff", padding: "16px 24px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+    <div style={{ minHeight: "100vh", background: "#0f172a", color: "#fff", fontFamily: "sans-serif" }}>
+      
+      {/* Top Header / Network Banner */}
+      <header style={{ background: "#1e293b", padding: "16px 24px", display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #334155" }}>
         <div>
-          <h1 style={{ margin: 0, fontSize: "20px" }}>🌍 PROJECT EARTH WALLET</h1>
-          <span style={{ fontSize: "11px", color: "#4ade80" }}>● Network: Sepolia Testnet (Strictly Bound)</span>
+          <h1 style={{ margin: 0, fontSize: "18px" }}>🌍 PROJECT EARTH WALLET</h1>
         </div>
-        {walletCreated && (
-          <div style={{ fontSize: "12px", background: "#1f2937", padding: "6px 12px", borderRadius: "6px" }}>
-            Connected: <strong>{walletAddress}</strong>
-          </div>
-        )}
+        <div style={{ background: "#334155", padding: "6px 12px", borderRadius: "8px", fontSize: "12px", color: "#4ade80" }}>
+          ● Ethereum Sepolia (Strictly Bound)
+        </div>
       </header>
 
-      <nav style={{ background: "#fff", borderBottom: "1px solid #e5e7eb", padding: "0 24px", display: "flex", gap: "16px" }}>
+      {/* Navigation Tabs */}
+      <nav style={{ background: "#1e293b", padding: "0 24px", display: "flex", gap: "20px", borderBottom: "1px solid #334155" }}>
         <button
           onClick={() => setActiveTab("wallet")}
-          style={{ padding: "12px 16px", background: "transparent", border: "none", borderBottom: activeTab === "wallet" ? "2px solid #2563eb" : "2px solid transparent", fontWeight: activeTab === "wallet" ? "bold" : "normal", cursor: "pointer" }}
+          style={{ padding: "12px 16px", background: "transparent", border: "none", color: activeTab === "wallet" ? "#60a5fa" : "#94a3b8", borderBottom: activeTab === "wallet" ? "2px solid #60a5fa" : "2px solid transparent", cursor: "pointer", fontWeight: "bold" }}
         >
           🔑 Wallet Core
         </button>
         <button
           onClick={() => setActiveTab("dex")}
-          style={{ padding: "12px 16px", background: "transparent", border: "none", borderBottom: activeTab === "dex" ? "2px solid #2563eb" : "2px solid transparent", fontWeight: activeTab === "dex" ? "bold" : "normal", cursor: "pointer" }}
+          style={{ padding: "12px 16px", background: "transparent", border: "none", color: activeTab === "dex" ? "#60a5fa" : "#94a3b8", borderBottom: activeTab === "dex" ? "2px solid #60a5fa" : "2px solid transparent", cursor: "pointer", fontWeight: "bold" }}
         >
           🔄 DEX Swap
         </button>
         <button
           onClick={() => setActiveTab("nft")}
-          style={{ padding: "12px 16px", background: "transparent", border: "none", borderBottom: activeTab === "nft" ? "2px solid #2563eb" : "2px solid transparent", fontWeight: activeTab === "nft" ? "bold" : "normal", cursor: "pointer" }}
+          style={{ padding: "12px 16px", background: "transparent", border: "none", color: activeTab === "nft" ? "#60a5fa" : "#94a3b8", borderBottom: activeTab === "nft" ? "2px solid #60a5fa" : "2px solid transparent", cursor: "pointer", fontWeight: "bold" }}
         >
           🖼️ NFT Marketplace
         </button>
         <button
           onClick={() => setActiveTab("launchpad")}
-          style={{ padding: "12px 16px", background: "transparent", border: "none", borderBottom: activeTab === "launchpad" ? "2px solid #2563eb" : "2px solid transparent", fontWeight: activeTab === "launchpad" ? "bold" : "normal", cursor: "pointer" }}
+          style={{ padding: "12px 16px", background: "transparent", border: "none", color: activeTab === "launchpad" ? "#60a5fa" : "#94a3b8", borderBottom: activeTab === "launchpad" ? "2px solid #60a5fa" : "2px solid transparent", cursor: "pointer", fontWeight: "bold" }}
         >
           🚀 Token Launchpad
         </button>
       </nav>
 
-      <main style={{ maxWidth: "900px", margin: "24px auto", background: "#fff", borderRadius: "8px", boxShadow: "0 1px 3px rgba(0,0,0,0.1)", padding: "24px" }}>
+      {/* Main Content Area */}
+      <main style={{ padding: "30px 20px", maxWidth: "900px", margin: "0 auto" }}>
+        
         {activeTab === "wallet" && (
-          <div>
-            <h2>Non-Custodial Wallet Management</h2>
-            {!walletCreated ? (
-              <div style={{ textAlign: "center", padding: "40px 0" }}>
-                <p style={{ color: "#6b7280", marginBottom: "20px" }}>Create your secure Sepolia testnet vault to get started.</p>
-                <button
-                  onClick={handleCreateWallet}
-                  style={{ background: "#2563eb", color: "#fff", border: "none", padding: "12px 24px", borderRadius: "6px", fontSize: "14px", fontWeight: "bold", cursor: "pointer" }}
-                >
-                  Create New Wallet Vault
-                </button>
-              </div>
-            ) : (
-              <div>
-                <div style={{ background: "#ecfdf5", border: "1px solid #10b981", padding: "16px", borderRadius: "6px", marginBottom: "16px" }}>
-                  <p style={{ margin: "0 0 8px 0", color: "#065f46", fontWeight: "bold" }}>✅ Vault Active & Secured</p>
-                  <p style={{ margin: 0, fontSize: "13px", color: "#047857" }}>Address: {walletAddress}</p>
-                </div>
-                <div style={{ background: "#fef2f2", border: "1px solid #f87171", padding: "16px", borderRadius: "6px" }}>
-                  <p style={{ margin: "0 0 4px 0", color: "#991b1b", fontWeight: "bold" }}>🔒 Isolated Mnemonic Backup</p>
-                  <p style={{ margin: 0, fontSize: "12px", fontFamily: "monospace", color: "#7f1d1d" }}>{mnemonic}</p>
-                </div>
-              </div>
-            )}
+          <div style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: "12px", padding: "24px", maxWidth: "450px", margin: "40px auto", boxShadow: "0 4px 6px rgba(0,0,0,0.3)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
+              <span style={{ background: "#334155", padding: "4px 8px", borderRadius: "4px", fontSize: "12px" }}>🔒 Lock</span>
+              <span style={{ fontSize: "12px", color: "#94a3b8" }}>Ethereum Sepolia ▾</span>
+            </div>
+
+            <div style={{ textAlign: "center", marginBottom: "24px" }}>
+              <p style={{ margin: "0 0 8px 0", fontSize: "12px", color: "#94a3b8", letterSpacing: "1px" }}>TOTAL BALANCE (ETH)</p>
+              <h2 style={{ margin: 0, fontSize: "32px", fontWeight: "bold" }}>{balance}</h2>
+            </div>
+
+            <div style={{ background: "#0f172a", padding: "12px", borderRadius: "8px", display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px", fontSize: "13px" }}>
+              <span style={{ color: "#cbd5e1", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "330px" }}>{walletAddress}</span>
+              <button onClick={() => navigator.clipboard.writeText(walletAddress)} style={{ background: "transparent", border: "none", color: "#60a5fa", cursor: "pointer", fontSize: "12px" }}>Copy</button>
+            </div>
+
+            <div style={{ display: "flex", gap: "10px" }}>
+              <button style={{ flex: 1, background: "#4f46e5", color: "#fff", border: "none", padding: "12px", borderRadius: "8px", fontWeight: "bold", cursor: "pointer" }}>Send</button>
+              <button style={{ flex: 1, background: "#7f1d1d", color: "#fca5a5", border: "none", padding: "12px", borderRadius: "8px", fontWeight: "bold", cursor: "pointer" }}>Remove Wallet</button>
+            </div>
           </div>
         )}
 
         {activeTab === "dex" && (
-          <div>
-            <h2>Sepolia Swap Engine (DEX)</h2>
-            <p style={{ color: "#6b7280", fontSize: "13px" }}>Trade tokens securely on the Sepolia testnet liquidity pool.</p>
-            <div style={{ background: "#f9fafb", border: "1px dashed #d1d5db", padding: "30px", textAlign: "center", borderRadius: "6px", color: "#4b5563" }}>
-              🔄 SepoliaSwapEngine Module Active (Ready for Testnet Swaps)
+          <div style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: "12px", padding: "24px" }}>
+            <h2>🔄 Sepolia Swap Engine (DEX)</h2>
+            <p style={{ color: "#94a3b8", fontSize: "14px" }}>Trade tokens securely on the Sepolia testnet liquidity pool with strict invariant controls.</p>
+            <div style={{ background: "#0f172a", border: "1px dashed #334155", padding: "30px", textAlign: "center", borderRadius: "8px", color: "#cbd5e1", marginTop: "20px" }}>
+              SepoliaSwapEngine Module is Active & Ready.
             </div>
           </div>
         )}
 
         {activeTab === "nft" && (
-          <div>
+          <div style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: "12px", padding: "24px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-              <h2>NFT Marketplace</h2>
+              <h2>🖼️ NFT Marketplace</h2>
               <button
                 onClick={() => setIsModalOpen(true)}
-                style={{ background: "#7c3aed", color: "#fff", border: "none", padding: "8px 16px", borderRadius: "6px", cursor: "pointer", fontSize: "13px" }}
+                style={{ background: "#7c3aed", color: "#fff", border: "none", padding: "8px 16px", borderRadius: "6px", cursor: "pointer", fontSize: "13px", fontWeight: "bold" }}
               >
                 + List New NFT
               </button>
@@ -117,10 +106,11 @@ export default function EarthWalletDashboard() {
         )}
 
         {activeTab === "launchpad" && (
-          <div>
-            <LaunchpadView walletAddress={walletAddress || "0x71C...38a9 (Guest)"} />
+          <div style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: "12px", padding: "24px" }}>
+            <LaunchpadView walletAddress={walletAddress} />
           </div>
         )}
+
       </main>
     </div>
   );
